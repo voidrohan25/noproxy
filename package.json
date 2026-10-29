@@ -1,0 +1,39 @@
+{
+  "name": "noproxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-Ready Smart Attendance Management SaaS with Dynamic QR, Geofencing, Device Binding, and Excel Registers",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "tsx src/tests/run_all_tests.ts",
+    "provision:admin": "tsx scripts/provision-admin.ts"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.48.1",
+    "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
+    "jsqr": "^1.4.0",
+    "lucide-react": "^0.475.0",
+    "next": "^15.1.7",
+    "qrcode": "^1.5.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.0.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "autoprefixer": "^10.6.2",
+    "postcss": "^8.5.2",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
