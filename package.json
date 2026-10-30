@@ -9,6 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "tsx src/tests/run_all_tests.ts",
+    "test:e2e": "tsx src/tests/e2e_journeys.test.ts",
+    "test:load": "tsx src/tests/load_test.ts",
     "provision:admin": "tsx scripts/provision-admin.ts"
   },
   "dependencies": {

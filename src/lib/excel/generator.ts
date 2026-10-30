@@ -129,91 +129,111 @@ export async function generateBatchAttendanceExcel(data: ExcelExportData): Promi
     }
   });
 
+  // Helper to sanitize formula injection characters (=, +, -, @, \t, \r)
+  const sanitizeCell = (val: string | undefined | null): string => {
+    if (!val) return '';
+    const trimmed = String(val).trim();
+    if (/^[=+\-@\t\r]/.test(trimmed)) {
+      return `'${trimmed}`; // Prepend single quote to force Excel to treat as plain string literal
+    }
+    return trimmed;
+  };
+
   // 4. Populate Student Attendance Rows
   const totalSessionsCount = sortedSessions.length;
 
-  data.students.forEach((item, studentIndex) => {
-    const rowValues: (string | number)[] = [
-      item.rollNumber || (studentIndex + 1).toString(),
-      item.student.displayName,
-      item.student.email,
-    ];
+  if (data.students.length === 0) {
+    const emptyRow = worksheet.addRow(['—', 'No students enrolled in this batch', '—', ...Array(sortedSessions.length + 5).fill('—')]);
+    emptyRow.height = 24;
+    emptyRow.getCell(2).font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF64748B' } };
+  } else {
+    data.students.forEach((item, studentIndex) => {
+      const rowValues: (string | number)[] = [
+        sanitizeCell(item.rollNumber || (studentIndex + 1).toString()),
+        sanitizeCell(item.student.displayName),
+        sanitizeCell(item.student.email),
+      ];
 
-    let studentPresentCount = 0;
-    let studentOnlineCount = 0;
-    let studentAbsentCount = 0;
+      let studentPresentCount = 0;
+      let studentOnlineCount = 0;
+      let studentAbsentCount = 0;
 
-    // Fill attendance for each session
-    sortedSessions.forEach((sess) => {
-      const status = attendanceMap.get(`${sess.id}:${item.student.id}`);
-      if (status === 'PRESENT') {
-        rowValues.push('Present');
-        studentPresentCount++;
-      } else if (status === 'ONLINE') {
-        rowValues.push('Online');
-        studentOnlineCount++;
-      } else {
-        rowValues.push('Absent');
-        studentAbsentCount++;
-      }
-    });
-
-    // Summary calculations
-    const attendedSessions = studentPresentCount + studentOnlineCount;
-    const percentage = totalSessionsCount > 0 ? (attendedSessions / totalSessionsCount) : 0;
-
-    rowValues.push(studentPresentCount, studentOnlineCount, studentAbsentCount, totalSessionsCount, percentage);
-
-    const dataRow = worksheet.addRow(rowValues);
-    dataRow.height = 22;
-
-    const isEven = studentIndex % 2 === 0;
-    const baseBg = isEven ? 'FFFFFFFF' : 'FFF8FAFC';
-
-    // Style data cells
-    dataRow.eachCell((cell, colNumber) => {
-      cell.font = { name: 'Calibri', size: 10 };
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-        right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-      };
-
-      if (colNumber === 1) {
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: baseBg } };
-      } else if (colNumber === 2 || colNumber === 3) {
-        cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: baseBg } };
-      } else if (colNumber <= 3 + sortedSessions.length) {
-        // Attendance status column
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        const val = cell.value?.toString();
-        if (val === 'Present') {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F4EA' } }; // Soft green
-          cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF137333' } };
-        } else if (val === 'Online') {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } }; // Soft blue
-          cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1A73E8' } };
+      // Fill attendance for each session
+      sortedSessions.forEach((sess) => {
+        const status = attendanceMap.get(`${sess.id}:${item.student.id}`);
+        if (status === 'PRESENT') {
+          rowValues.push('Present');
+          studentPresentCount++;
+        } else if (status === 'ONLINE') {
+          rowValues.push('Online');
+          studentOnlineCount++;
         } else {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE8E6' } }; // Soft red
-          cell.font = { name: 'Calibri', size: 10, color: { argb: 'FFC5221F' } };
+          rowValues.push('Absent');
+          studentAbsentCount++;
         }
-      } else if (colNumber === headers.length) {
-        // Attendance Percentage column
-        cell.numFmt = '0.00%';
-        cell.alignment = { vertical: 'middle', horizontal: 'right' };
-        cell.font = { name: 'Calibri', size: 10, bold: true };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
-      } else {
-        // Summary count columns
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.font = { name: 'Calibri', size: 10, bold: true };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
-      }
+      });
+
+      // Summary calculations: Attendance % = (Present + Online) / Total eligible finalized sessions * 100
+      const attendedSessions = studentPresentCount + studentOnlineCount;
+      const percentageValue: string | number = totalSessionsCount > 0 
+        ? (attendedSessions / totalSessionsCount) 
+        : 'N/A';
+
+      rowValues.push(studentPresentCount, studentOnlineCount, studentAbsentCount, totalSessionsCount, percentageValue);
+
+      const dataRow = worksheet.addRow(rowValues);
+      dataRow.height = 22;
+
+      const isEven = studentIndex % 2 === 0;
+      const baseBg = isEven ? 'FFFFFFFF' : 'FFF8FAFC';
+
+      // Style data cells
+      dataRow.eachCell((cell, colNumber) => {
+        cell.font = { name: 'Calibri', size: 10 };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        };
+
+        if (colNumber === 1) {
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: baseBg } };
+        } else if (colNumber === 2 || colNumber === 3) {
+          cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: baseBg } };
+        } else if (colNumber <= 3 + sortedSessions.length) {
+          // Attendance status column
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          const val = cell.value?.toString();
+          if (val === 'Present') {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F4EA' } }; // Soft green
+            cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF137333' } };
+          } else if (val === 'Online') {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } }; // Soft blue
+            cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1A73E8' } };
+          } else {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE8E6' } }; // Soft red
+            cell.font = { name: 'Calibri', size: 10, color: { argb: 'FFC5221F' } };
+          }
+        } else if (colNumber === headers.length) {
+          // Attendance Percentage column
+          if (typeof cell.value === 'number') {
+            cell.numFmt = '0.00%';
+          }
+          cell.alignment = { vertical: 'middle', horizontal: 'right' };
+          cell.font = { name: 'Calibri', size: 10, bold: true };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+        } else {
+          // Summary count columns
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          cell.font = { name: 'Calibri', size: 10, bold: true };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+        }
+      });
     });
-  });
+  }
 
   // 5. Adjust Column Widths
   worksheet.getColumn(1).width = 12; // Roll No.
