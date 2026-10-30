@@ -16,6 +16,11 @@
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.48.1",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.4",
+    "@types/qrcode": "^1.5.5",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -24,15 +29,9 @@
     "helmet": "^8.0.0",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
     "zod": "^3.24.2"
   },
-  "devDependencies": {
-    "@types/cookie-parser": "^1.4.8",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.13.4",
-    "@types/qrcode": "^1.5.5",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
-  }
+  "devDependencies": {}
 }
