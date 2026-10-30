@@ -182,30 +182,76 @@ code C:\Users\hp\.gemini\antigravity\scratch\noproxy
 
 ---
 
-## 12. Automated Testing Suite
+## 12. Monorepo Architecture & Directory Structure
+
+NoProxy is organized as a production-grade decoupled monorepo prepared for separate frontend and backend hosting:
+
+```
+noproxy/
+├── frontend/               # Next.js 15 App Router (Deploy to Vercel)
+│   ├── src/                # Pages, App Router, Components, Hooks
+│   ├── next.config.ts      # API rewrites (/api/:path* -> backend) and security headers
+│   ├── package.json        # Frontend dependencies (React 19, Lucide, Tailwind)
+│   └── README.md           # Vercel deployment instructions
+├── backend/                # Node.js + Express API (Deploy to Render)
+│   ├── src/
+│   │   ├── server.ts       # Express app, Helmet, CORS, Health checks
+│   │   ├── routes/         # auth, admin, attendance, qr, reports, sessions
+│   │   ├── middleware/     # JWT authentication, role guards
+│   │   └── lib/            # Business logic, DB adapters, QR cryptography
+│   ├── supabase/           # PostgreSQL migrations (001-004 + seed)
+│   ├── package.json        # Backend dependencies (Express, ExcelJS, Helmet)
+│   └── README.md           # Render deployment instructions
+├── docs/                   # Full Technical & Deployment Documentation
+│   ├── ARCHITECTURE.md     # System architecture & data flow diagrams
+│   ├── DATABASE_SETUP.md   # Supabase PostgreSQL schema & migration guide
+│   ├── ENVIRONMENT_VARIABLES.md # Complete env var reference
+│   ├── GITHUB_SETUP.md     # Git repository and branch guide
+│   ├── VERCEL_DEPLOYMENT.md# Step-by-step Vercel frontend deployment
+│   ├── RENDER_DEPLOYMENT.md# Step-by-step Render backend deployment
+│   ├── TESTING.md          # Test suite execution and verification
+│   └── TROUBLESHOOTING.md  # Common issues and troubleshooting playbook
+├── render.yaml             # Render Blueprint for zero-configuration backend deployment
+└── README.md               # Project root overview (this file)
+```
+
+---
+
+## 13. Automated Testing Suite
 
 Run the automated test matrix covering status rules, roster validation, role boundaries, dynamic QR encryption, GPS geofencing, Excel generation, multi-batch enrollment, and admin-only location security:
 
 ```bash
-npm test
+# Run backend tests
+cd backend && npm test
 ```
 
-### Verified Test Matrix (6/6 Test Suites, 100% Passing)
+### Verified Test Matrix (8/8 Test Suites, 100% Passing)
 1. **Status Constraint Suite**: Strict enforcement of `PRESENT`, `ONLINE`, `ABSENT`. Instant rejection of `LATE`, `DELAYED`, `GRACE_PERIOD`, and `HALF_DAY`.
 2. **Authoritative Roster Suite**: Identity claiming, duplicate claim prevention, and name mismatch rejection.
 3. **Role-Based Access Control Suite**: Absolute server-side boundary enforcement (`isAdmin`, `isTrainer`, `isStudent`).
 4. **Anti-Proxy Geofence & QR Suite**: HMAC-SHA256 sliding challenge verification, replay rejection, tamper rejection, and Haversine distance geofencing.
 5. **Multi-Batch Enrollment Suite**: Multi-batch enrollment persistence, duplicate enrollment rejection, batch removal isolation, batch-specific QR attendance, and non-enrolled batch rejection.
 6. **Admin Location Security Suite**: Admin-only access to `/admin/settings/location-network`, 403 blocks for trainers/students, public coordinate masking, trainer update denial, and audited admin updates.
+7. **End-to-End User Journeys**: Complete student claim, multi-batch switch, dynamic QR scan, and Excel export verification.
+8. **High-Concurrency Load Suite**: Concurrent scan stress tests ensuring zero race conditions or double marks.
 
 ---
 
-## 13. Production Packaging & Deployment
+## 14. Production Deployment Quickstart
 
-To build and package for production:
-```bash
-npm run build
-```
-Deliverable standalone archive is available at:
-`C:\Users\hp\.gemini\antigravity\scratch\noproxy-production-saas.zip`
+### Frontend (Vercel)
+- **Repository**: [https://github.com/voidrohan25/noproxy](https://github.com/voidrohan25/noproxy)
+- **Framework Preset**: Next.js
+- **Root Directory**: `frontend`
+- **Environment Variables**: `NEXT_PUBLIC_BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- See [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md) for full guide.
+
+### Backend (Render)
+- **Render Blueprint**: Connect repository and Render will automatically detect `render.yaml`.
+- **Root Directory**: `backend`
+- **Build Command**: `npm install && npm run build`
+- **Start Command**: `npm start`
+- **Health Check Path**: `/health`
+- See [docs/RENDER_DEPLOYMENT.md](docs/RENDER_DEPLOYMENT.md) for full guide.
 
