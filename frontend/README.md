@@ -1,29 +1,25 @@
-# NoProxy — Frontend Web Application (Vercel)
+# NoProxy — Frontend Web App (Vercel)
 
-This directory contains the production-ready Next.js 15 (React 19) frontend client for **NoProxy**, engineered for deployment on **Vercel**.
+Production Next.js 15 App Router web application for **NoProxy Smart Attendance Management SaaS**.
 
-## Architecture & Responsibilities
-- **Vercel Deployment**: Fast global edge delivery, static generation, and SSR.
-- **Root Directory**: `frontend`
-- **Portals**:
-  - `/admin`: Administration console, multi-batch enrollment manager, and geofence configuration.
-  - `/trainer`: Projector dynamic QR display console and online attendance marking.
-  - `/student`: Student portal, batch switcher, and camera-based dynamic QR scanner.
-- **Backend Communication**:
-  - Rewrites all `/api/*` requests directly to the deployed Render backend service (`NEXT_PUBLIC_API_URL`).
-  - Seamless cookie transmission with `credentials: 'include'`.
+## 🚀 One-Click Vercel Deployment
 
-## Local Development
+1. On [vercel.com](https://vercel.com), click **Add New...** → **Project**.
+2. Import repository: **`voidrohan25/noproxy-frontend`**.
+3. Vercel automatically detects Next.js at the root!
+   - **Framework Preset**: Next.js
+   - **Root Directory**: `.` (leave as default root)
+   - **Build Command**: `next build`
+4. Set Environment Variables:
+   - `NEXT_PUBLIC_BACKEND_URL`: URL of your deployed Render backend (e.g., `https://noproxy-backend.onrender.com`)
+5. Click **Deploy**!
+
+## 🧪 Local Development
+
 ```bash
-# 1. Install dependencies
+# Install dependencies
 npm install
 
-# 2. Run local development server
+# Run development server
 npm run dev
-```
-
-## Production Build
-```bash
-npm run build
-npm start
 ```

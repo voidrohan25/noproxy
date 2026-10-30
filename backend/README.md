@@ -1,30 +1,31 @@
-# NoProxy — Backend Web Service (Render)
+# NoProxy — Backend API Service (Render)
 
-This directory contains the production-ready Node.js & Express backend service for **NoProxy**, engineered for deployment on **Render**.
+Production-ready Node.js + Express + TypeScript API service for **NoProxy Smart Attendance Management SaaS**.
 
-## Architecture & Responsibilities
-- **Render Web Service**: Binds to `PORT` (default: 10000).
-- **Health Check**: `GET /health` endpoint for Render uptime monitoring.
-- **CORS Protection**: Scoped to the Vercel frontend origin (`FRONTEND_URL`).
-- **Dynamic QR Engine**: Cryptographic HMAC-SHA256 sliding challenge token generator (20-second expiration).
-- **Classroom Geofencing**: Server-side Haversine spherical distance calculation.
-- **Reporting**: Streaming OpenXML `.xlsx` binary matrix attendance registers via ExcelJS.
-- **Database**: Supabase PostgreSQL with RLS and ACID multi-batch enrollment integrity.
+## 🚀 One-Click Render Deployment
 
-## Local Development
+1. On [dashboard.render.com](https://dashboard.render.com), click **New +** → **Web Service**.
+2. Connect repository: **`voidrohan25/noproxy-backend`**.
+3. Render automatically detects everything from the root!
+   - **Runtime**: Node
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
+   - **Health Check Path**: `/health`
+4. Set Environment Variables:
+   - `NODE_ENV`: `production`
+   - `PORT`: `10000`
+   - `FRONTEND_URL`: URL of your deployed frontend (e.g., `https://noproxy-frontend.vercel.app`)
+   - `QR_SIGNING_SECRET`: 64-char random hex string
+
+## 🧪 Local Testing & Verification
+
 ```bash
-# 1. Install dependencies
-npm install
-
-# 2. Run automated tests
+# Run 8/8 automated test suites
 npm test
 
-# 3. Start development server with auto-reload
-npm run dev
-```
-
-## Production Build & Start
-```bash
+# Build TypeScript to dist/server.js
 npm run build
+
+# Start production server
 npm start
 ```
