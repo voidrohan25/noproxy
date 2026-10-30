@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Smartphone,
@@ -18,425 +18,346 @@ import {
   Loader2,
   ChevronRight,
   UserCheck,
+  RefreshCw,
+  X,
 } from 'lucide-react';
-import { db } from '@/lib/db/mock-db';
 import { MobileQRScanner } from '@/components/MobileQRScanner';
 import { AttendanceStatusBadge } from '@/components/AttendanceStatusBadge';
 
-export default function StudentMultiBatchPortal() {
+interface StudentBatchItem {
+  batch: {
+    id: string;
+    name: string;
+    code: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+  };
+  enrollment: {
+    id: string;
+    status: string;
+  };
+  trainer?: {
+    id: string;
+    displayName: string;
+    email: string;
+  };
+  subject?: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  activeSession?: {
+    id: string;
+    title: string;
+    sessionDate: string;
+    mode: string;
+    sessionStatus: string;
+    myAttendanceStatus?: 'PRESENT' | 'ONLINE' | 'ABSENT' | null;
+  };
+  summary?: {
+    presentCount: number;
+    onlineCount: number;
+    absentCount: number;
+    totalFinalizedSessions: number;
+    attendancePercentage: number | string;
+  };
+}
+
+export default function StudentPortalPage() {
   const router = useRouter();
 
   const [authChecking, setAuthChecking] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [studentProfile, setStudentProfile] = useState<any>(null);
-  const [enrolledBatches, setEnrolledBatches] = useState<any[]>([]);
+  const [enrolledBatches, setEnrolledBatches] = useState<StudentBatchItem[]>([]);
   const [selectedBatchId, setSelectedBatchId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'batches' | 'scan' | 'history'>('batches');
+  const [isScanning, setIsScanning] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!data || !data.authenticated) {
-          router.push('/login');
-        } else if (data.role !== 'STUDENT' && data.role !== 'ADMIN' && data.role !== 'SUPER_ADMIN') {
-          router.push('/access-denied');
-        } else if (data.role === 'STUDENT' && (!data.studentProfile || !data.studentProfile.isVerified)) {
-          router.push('/student/complete-registration');
-        } else {
-          setCurrentUser(data.user);
-          let profile = data.studentProfile;
-          if (!profile && (data.role === 'ADMIN' || data.role === 'SUPER_ADMIN')) {
-            profile = db.studentProfiles.get('44444444-4444-4444-4444-444444444441');
-          }
-          setStudentProfile(profile);
+  // 1. Load student profile & batch enrollments from real backend API
+  const loadStudentData = useCallback(async () => {
+    try {
+      const meRes = await fetch('/api/auth/me');
+      if (meRes.status === 401) {
+        router.push('/login');
+        return;
+      }
+      const meData = await meRes.json();
+      if (!meData.authenticated) {
+        router.push('/login');
+        return;
+      }
+      if (meData.role !== 'STUDENT' && meData.role !== 'ADMIN' && meData.role !== 'SUPER_ADMIN') {
+        router.push('/access-denied');
+        return;
+      }
 
-          const studentId = profile?.userId || data.user.id;
-          // Load all active batch enrollments for this student
-          const batches = db.getStudentEnrolledBatches(studentId);
-          setEnrolledBatches(batches);
-          if (batches.length > 0) {
-            setSelectedBatchId(batches[0].batch.id);
+      setCurrentUser(meData.user);
+
+      // 2. Fetch Enrolled Batches with real-time active sessions
+      const batchesRes = await fetch('/api/student/batches');
+      const batchesData = await batchesRes.json();
+      if (batchesData.success && batchesData.batches) {
+        setEnrolledBatches(batchesData.batches);
+
+        setSelectedBatchId((prev) => {
+          if (prev && batchesData.batches.some((b: any) => b.batch.id === prev)) {
+            return prev;
           }
-          setAuthChecking(false);
-        }
-      })
-      .catch(() => router.push('/login'));
-  }, [router, refreshKey]);
+          return batchesData.batches[0]?.batch?.id || '';
+        });
+      }
+    } catch {
+      // Handle network errors
+    } finally {
+      setAuthChecking(false);
+    }
+  }, [router]);
+
+  useEffect(() => {
+    loadStudentData();
+  }, [loadStudentData, refreshKey]);
+
+  const currentBatchItem = enrolledBatches.find((item) => item.batch.id === selectedBatchId) || enrolledBatches[0];
+  const activeSession = currentBatchItem?.activeSession;
+  const isSessionActive = activeSession?.sessionStatus === 'ACTIVE';
+  const hasAlreadyMarked = activeSession?.myAttendanceStatus === 'PRESENT' || activeSession?.myAttendanceStatus === 'ONLINE';
 
   const handleLogout = async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      router.push('/login');
-    } catch {
-      router.push('/login');
-    }
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+  };
+
+  const handleScanSuccess = () => {
+    setIsScanning(false);
+    setRefreshKey((k) => k + 1);
   };
 
   if (authChecking) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-sm w-full text-center space-y-4">
-          <Loader2 className="w-10 h-10 text-indigo-400 animate-spin mx-auto" />
-          <h2 className="text-white font-bold text-lg">Authenticating Student Portal...</h2>
-          <p className="text-xs text-slate-400">Loading multi-batch enrollments & institutional roster claim.</p>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="flex items-center gap-3 text-slate-600 font-semibold text-sm">
+          <RefreshCw className="w-5 h-5 animate-spin text-blue-600" />
+          <span>Authenticating Student Session...</span>
         </div>
       </div>
     );
   }
 
-  const studentId = studentProfile?.userId || currentUser?.id;
-  const studentDisplayName = studentProfile?.fullName || currentUser?.displayName || 'Student';
-  const rollNumber = studentProfile?.studentIdNumber || 'ST-001';
-
-  // Find currently selected batch item
-  const currentBatchItem = enrolledBatches.find((item) => item.batch.id === selectedBatchId) || enrolledBatches[0];
-  const currentBatch = currentBatchItem?.batch;
-  const currentSummary = currentBatchItem?.summary || db.getStudentAttendanceSummary(selectedBatchId, studentId);
-
-  // Get active session specifically for the selected batch
-  const batchSessions = currentBatch ? db.listSessions(currentBatch.id) : [];
-  const activeSessionForBatch = batchSessions.find((s) => s.sessionStatus === 'ACTIVE');
-  const finalizedSessionsForBatch = batchSessions.filter((s) => s.sessionStatus === 'FINALIZED');
-
   return (
-    <div className="min-h-screen bg-slate-900/5 sm:py-8">
-      {/* Mobile Device Frame on Desktop / Full Screen on Phones */}
-      <div className="max-w-md mx-auto bg-white min-h-[92vh] sm:rounded-[2.5rem] sm:border-8 sm:border-slate-800 sm:shadow-2xl overflow-hidden flex flex-col">
-        {/* Phone Top Notch & Status Bar */}
-        <div className="bg-slate-900 text-white px-6 pt-3 pb-2 flex items-center justify-between text-[11px] font-mono">
-          <span>09:41</span>
-          <div className="w-20 h-4 bg-black rounded-full mx-auto hidden sm:block"></div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            <span>5G • 100%</span>
-          </div>
-        </div>
-
-        {/* Student App Header */}
-        <div className="bg-gradient-to-r from-indigo-950 to-indigo-900 text-white p-5 space-y-3">
-          <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] flex flex-col font-sans">
+      {/* Top Header */}
+      <header className="sticky top-0 z-40 bg-[#172554] text-white shadow-md">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-xs text-white shadow-inner">
-                {studentDisplayName.slice(0, 2).toUpperCase()}
+              <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow">
+                <ShieldCheck className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-sm font-black tracking-tight">{studentDisplayName}</h1>
-                <span className="text-[10px] text-indigo-300 font-mono">
-                  Roll: {rollNumber} • {enrolledBatches.length} Batches Enrolled
+                <span className="font-extrabold text-base tracking-tight flex items-center gap-1.5">
+                  NoProxy
+                  <span className="text-[10px] font-bold bg-blue-500/30 text-blue-200 border border-blue-400/30 px-1.5 py-0.5 rounded">
+                    Student
+                  </span>
+                </span>
+                <span className="text-[10px] block text-slate-300 font-medium -mt-0.5">
+                  Instant Attendance
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                Bound
-              </span>
+
+            {/* Student Info & Logout */}
+            <div className="flex items-center gap-3 text-xs font-semibold">
+              <div className="text-right hidden sm:block">
+                <p className="font-bold leading-none">{currentUser?.displayName || 'Student'}</p>
+                <p className="text-[10px] text-slate-300 font-mono">{currentUser?.email}</p>
+              </div>
+
               <button
+                type="button"
                 onClick={handleLogout}
-                title="Sign out of student portal"
-                className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-indigo-200 transition-colors"
+                className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                title="Sign Out"
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <LogOut className="w-4 h-4" />
               </button>
             </div>
           </div>
         </div>
+      </header>
 
-        {/* Mobile Navigation Tabs */}
-        <div className="grid grid-cols-3 bg-slate-100 border-b border-slate-200 text-xs font-bold">
+      {/* Main Container */}
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Welcome Student Banner */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <h1 className="text-lg font-black text-[#0F172A] tracking-tight">
+              Welcome, {currentUser?.displayName}
+            </h1>
+            <p className="text-xs text-[#64748B]">
+              Email: <strong className="text-slate-800 font-mono">{currentUser?.email}</strong> • Enrolled in{' '}
+              <strong className="text-blue-600">{enrolledBatches.length}</strong> {enrolledBatches.length === 1 ? 'Batch' : 'Batches'}
+            </p>
+          </div>
+
           <button
-            onClick={() => setActiveTab('batches')}
-            className={`py-3 flex items-center justify-center gap-1 transition-colors border-b-2 ${
-              activeTab === 'batches'
-                ? 'border-indigo-600 text-indigo-900 bg-white'
-                : 'border-transparent text-slate-700 hover:text-slate-900'
-            }`}
+            type="button"
+            onClick={() => setRefreshKey((k) => k + 1)}
+            className="text-xs font-bold text-slate-500 hover:text-blue-600 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-blue-300 transition-colors flex items-center gap-1.5"
           >
-            <Layers className="w-3.5 h-3.5" />
-            My Batches
-          </button>
-          <button
-            onClick={() => setActiveTab('scan')}
-            className={`py-3 flex items-center justify-center gap-1 transition-colors border-b-2 ${
-              activeTab === 'scan'
-                ? 'border-indigo-600 text-indigo-900 bg-white'
-                : 'border-transparent text-slate-700 hover:text-slate-900'
-            }`}
-          >
-            <QrCode className="w-3.5 h-3.5" />
-            Scan QR
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`py-3 flex items-center justify-center gap-1 transition-colors border-b-2 ${
-              activeTab === 'history'
-                ? 'border-indigo-600 text-indigo-900 bg-white'
-                : 'border-transparent text-slate-700 hover:text-slate-900'
-            }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            History ({currentSummary?.attendancePercentage || 0}%)
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Refresh</span>
           </button>
         </div>
 
-        {/* Body Content */}
-        <div className="flex-1 p-4 overflow-y-auto space-y-4" key={refreshKey}>
-          {/* TAB 1: ALL ENROLLED BATCHES */}
-          {activeTab === 'batches' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
-                  Enrolled Batches ({enrolledBatches.length})
-                </span>
-                <span className="text-[10px] text-indigo-600 font-semibold">
-                  Select a batch to mark attendance
-                </span>
-              </div>
-
-              {enrolledBatches.length === 0 ? (
-                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                  <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
-                  <h3 className="text-sm font-bold text-slate-800">No Active Enrollments</h3>
-                  <p className="text-xs text-slate-500">
-                    Your account has not been enrolled in any academic batches yet. Please contact your institution administrator.
-                  </p>
-                </div>
-              ) : (
-                enrolledBatches.map((item) => {
-                  const isSelected = item.batch.id === selectedBatchId;
-                  const hasActive = !!item.activeSession;
-
-                  return (
-                    <div
-                      key={item.batch.id}
-                      onClick={() => setSelectedBatchId(item.batch.id)}
-                      className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-                        isSelected
-                          ? 'border-indigo-600 bg-indigo-50/40 ring-2 ring-indigo-500/20'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">
-                              {item.batch.code}
-                            </span>
-                            {hasActive && (
-                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                                Live Lecture
-                              </span>
-                            )}
-                          </div>
-                          <h4 className="text-xs font-black text-slate-900 mt-1.5">
-                            {item.batch.name}
-                          </h4>
-                          <span className="text-[10px] text-slate-600 block mt-0.5">
-                            Trainer: {item.trainer?.displayName || 'Assigned Instructor'}
-                          </span>
-                        </div>
-
-                        <div className="text-right">
-                          <span className="text-base font-black text-indigo-950 block">
-                            {item.summary?.attendancePercentage || 0}%
-                          </span>
-                          <span className="text-[9px] text-slate-500 block uppercase font-bold">Attendance</span>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500">
-                          {item.activeSession ? item.activeSession.title : 'No active session'}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedBatchId(item.batch.id);
-                            setActiveTab('scan');
-                          }}
-                          className={`px-3 py-1 rounded-lg font-bold text-xs flex items-center gap-1 ${
-                            isSelected
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                          }`}
-                        >
-                          Open Batch <ChevronRight className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+        {/* My Batches Tabs */}
+        {enrolledBatches.length > 0 ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <BookOpen className="w-4 h-4 text-blue-600" />
+                <span>My Batches (Select to Mark Attendance)</span>
+              </span>
             </div>
-          )}
 
-          {/* TAB 2: BATCH-SPECIFIC QR ATTENDANCE SCANNER */}
-          {activeTab === 'scan' && (
-            <div className="space-y-4">
-              {currentBatch && (
-                <div className="p-3 bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase text-indigo-600">Selected Batch</span>
-                    <h4 className="text-xs font-black text-slate-900">{currentBatch.name}</h4>
-                  </div>
-                  <button
-                    onClick={() => setActiveTab('batches')}
-                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline"
-                  >
-                    Switch Batch
-                  </button>
-                </div>
-              )}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {enrolledBatches.map((item) => (
+                <button
+                  key={item.batch.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedBatchId(item.batch.id);
+                    setIsScanning(false);
+                  }}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 border ${
+                    selectedBatchId === item.batch.id
+                      ? 'bg-[#172554] text-white border-[#172554] shadow-sm'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <span>{item.batch.name}</span>
+                  {item.activeSession?.sessionStatus === 'ACTIVE' && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  )}
+                </button>
+              ))}
+            </div>
 
-              {activeSessionForBatch ? (
-                <>
-                  <div className="p-3.5 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
-                        Active Session in Progress
-                      </span>
-                      <h3 className="text-xs font-black text-indigo-950 mt-0.5">
-                        {activeSessionForBatch.title}
-                      </h3>
-                      <span className="text-[10px] text-slate-700 block">
-                        Mode: {activeSessionForBatch.mode} • Room: Advanced Software Lab 402
+            {/* Selected Batch Active Status & Scan Console */}
+            {currentBatchItem && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-black text-[#0F172A]">{currentBatchItem.batch.name}</h2>
+                      <span className="text-[11px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                        {currentBatchItem.batch.code}
                       </span>
                     </div>
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                    <p className="text-xs text-[#64748B]">
+                      Trainer: <strong className="text-slate-800">{currentBatchItem.trainer?.displayName || 'Instructor'}</strong>
+                      {currentBatchItem.subject && <span> • Course: {currentBatchItem.subject.name}</span>}
+                    </p>
                   </div>
 
-                  {/* Mobile Camera Scanner for Selected Batch */}
-                  <MobileQRScanner
-                    sessionId={activeSessionForBatch.id}
-                    studentId={studentId}
-                    studentName={studentDisplayName}
-                    onSuccess={() => setRefreshKey((k) => k + 1)}
-                  />
-                </>
-              ) : (
-                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                  <Radio className="w-8 h-8 text-slate-400 mx-auto animate-pulse" />
-                  <h3 className="text-sm font-bold text-slate-800">
-                    No Active Lecture in {currentBatch?.name || 'this batch'}
-                  </h3>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    The trainer for this batch has not opened an active attendance session right now.
-                    If you are attending another batch lecture, switch your selected batch.
-                  </p>
-                  <button
-                    onClick={() => setActiveTab('batches')}
-                    className="px-4 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow"
-                  >
-                    View All My Batches
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 3: BATCH-SPECIFIC ATTENDANCE HISTORY */}
-          {activeTab === 'history' && (
-            <div className="space-y-4">
-              {currentBatch && (
-                <div className="p-3 bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase text-indigo-600">Register For</span>
-                    <h4 className="text-xs font-black text-slate-900">{currentBatch.name}</h4>
-                  </div>
-                  <button
-                    onClick={() => setActiveTab('batches')}
-                    className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline"
-                  >
-                    Switch Batch
-                  </button>
-                </div>
-              )}
-
-              {/* Metric Ring Cards */}
-              <div className="bg-gradient-to-br from-indigo-900 to-indigo-950 text-white rounded-2xl p-5 shadow-lg space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-300">
-                      Batch Finalized Attendance
-                    </span>
-                    <h2 className="text-3xl font-black mt-1">
-                      {currentSummary?.attendancePercentage || 0}%
-                    </h2>
-                  </div>
-                  <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center">
-                    <Award className="w-6 h-6 text-indigo-300" />
-                  </div>
-                </div>
-
-                {/* 3-Status Summary Breakdown */}
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-indigo-800 text-center text-xs">
-                  <div className="bg-white/10 p-2 rounded-xl">
-                    <span className="text-[9px] text-emerald-300 font-bold block uppercase">Present</span>
-                    <strong className="text-base text-white block mt-0.5">{currentSummary?.presentCount || 0}</strong>
-                    <span className="text-[8px] text-indigo-200">Lab QR</span>
-                  </div>
-                  <div className="bg-white/10 p-2 rounded-xl">
-                    <span className="text-[9px] text-blue-300 font-bold block uppercase">Online</span>
-                    <strong className="text-base text-white block mt-0.5">{currentSummary?.onlineCount || 0}</strong>
-                    <span className="text-[8px] text-indigo-200">Virtual</span>
-                  </div>
-                  <div className="bg-white/10 p-2 rounded-xl">
-                    <span className="text-[9px] text-rose-300 font-bold block uppercase">Absent</span>
-                    <strong className="text-base text-white block mt-0.5">{currentSummary?.absentCount || 0}</strong>
-                    <span className="text-[8px] text-indigo-200">Unrecorded</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Finalized Session History */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider px-1">
-                  Finalized Lectures in {currentBatch?.code}
-                </h4>
-
-                <div className="space-y-2">
-                  {finalizedSessionsForBatch.length > 0 ? (
-                    finalizedSessionsForBatch.map((sess) => {
-                      const rec = db.attendance.get(`${sess.id}:${studentId}`);
-                      const status = rec ? rec.status : 'ABSENT';
-                      const subject = db.subjects.get(sess.subjectId);
-
-                      return (
-                        <div
-                          key={sess.id}
-                          className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between"
-                        >
-                          <div>
-                            <h5 className="text-xs font-bold text-slate-900">
-                              {subject?.name || sess.title}
-                            </h5>
-                            <span className="text-[10px] text-slate-700 block mt-0.5">
-                              {sess.sessionDate} • Mode: {sess.mode}
-                            </span>
-                          </div>
-                          <AttendanceStatusBadge status={status} size="sm" />
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500">
-                      No finalized sessions recorded for this batch yet.
+                  {currentBatchItem.summary && (
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+                        Attendance Rate
+                      </span>
+                      <span className="text-base font-black text-blue-600">
+                        {currentBatchItem.summary.attendancePercentage}
+                      </span>
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
-          )}
-        </div>
 
-        {/* Phone Bottom Home Bar */}
-        <div className="p-2 bg-slate-50 border-t border-slate-200 flex justify-center">
-          <div className="w-32 h-1 bg-slate-300 rounded-full"></div>
-        </div>
-      </div>
+                {/* Live Session Status Banner & Scan Trigger */}
+                {isSessionActive ? (
+                  <div className="p-5 rounded-2xl bg-blue-50/70 border border-blue-200/80 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-bold text-blue-950">
+                        <Radio className="w-4 h-4 text-emerald-600 animate-pulse" />
+                        <span>Active Attendance Session: {activeSession?.title}</span>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                        Live Now
+                      </span>
+                    </div>
+
+                    {hasAlreadyMarked ? (
+                      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-center space-y-1">
+                        <div className="flex items-center justify-center gap-2 text-emerald-900 font-extrabold text-sm">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                          <span>Attendance Already Recorded!</span>
+                        </div>
+                        <p className="text-xs text-emerald-700 font-semibold">
+                          Your attendance status for this session is marked as <strong>{activeSession?.myAttendanceStatus}</strong>.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-center space-y-3 pt-1">
+                        <p className="text-xs text-slate-600 max-w-sm mx-auto">
+                          The trainer is currently projecting the live dynamic QR code. Scan the code on your trainer's screen to mark your attendance.
+                        </p>
+                        {!isScanning ? (
+                          <button
+                            type="button"
+                            onClick={() => setIsScanning(true)}
+                            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-extrabold shadow-md shadow-blue-600/20 transition-all inline-flex items-center gap-2 hover:scale-102"
+                          >
+                            <QrCode className="w-5 h-5" />
+                            <span>Scan QR Code</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setIsScanning(false)}
+                            className="px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1.5"
+                          >
+                            <X className="w-4 h-4" />
+                            <span>Cancel Scanner</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-6 text-center text-slate-500 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-1">
+                    <p className="font-bold text-xs text-slate-700">No Active Attendance Session</p>
+                    <p className="text-[11px] text-slate-400">
+                      When your trainer clicks "Start Attendance" in class, the scanner will appear here automatically.
+                    </p>
+                  </div>
+                )}
+
+                {/* Mobile Camera Scanner Viewfinder */}
+                {isScanning && activeSession && (
+                  <div className="pt-2 animate-in fade-in duration-200">
+                    <MobileQRScanner
+                      sessionId={activeSession.id}
+                      batchName={currentBatchItem.batch.name}
+                      studentId={currentUser?.id}
+                      studentName={currentUser?.displayName}
+                      onSuccess={handleScanSuccess}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="p-12 text-center text-slate-500 bg-white rounded-2xl border border-slate-200 space-y-2">
+            <BookOpen className="w-8 h-8 text-slate-300 mx-auto" />
+            <h3 className="font-extrabold text-sm text-slate-800">Not Enrolled in Any Batch</h3>
+            <p className="text-xs text-slate-500">
+              Your account is active, but you are not yet enrolled in any batch. Please ask your trainer or administrator to add your email ({currentUser?.email}) to your batch.
+            </p>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
