@@ -163,7 +163,8 @@ async function runPart14Regression() {
 
   // Step 12: Student marks attendance within GPS Geofence
   console.log('\n--- Step 12: Student Scans Dynamic QR within Classroom Geofence ---');
-  const studentCoords = { latitude: 18.52042, longitude: 73.85671, accuracy: 10 }; // within classroom
+  const classroom = db.classrooms.get('88888888-8888-8888-8888-888888888881')!;
+  const studentCoords = { latitude: classroom.latitude + 0.00005, longitude: classroom.longitude + 0.00005, accuracy: 10 }; // within classroom
   const attRes = db.submitOfflineAttendance({
     authenticatedUserId: studentRahul.id,
     sessionId,
